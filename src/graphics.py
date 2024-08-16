@@ -2,18 +2,22 @@ import world, tile, bind, controller
 from tkinter import *
 from tkinter import font
 from tkinter import scrolledtext
+from tkinter.filedialog import *
 import time
+import sys
+import os.path
 
 # Propositional logic agent 
 import gamestate, agent
 
 DELAY = 10
+X_OFFSET, Y_OFFSET = 150, 100
 
 class Board:
     def __init__(self, world):
         self.root = Tk()
         self.root.title("WUMPUS WORLD")
-        self.root.geometry("+200+50")
+        self.root.geometry(f"+{X_OFFSET}+{Y_OFFSET}")
 
         self.canvas = Canvas(self.root, width=64 * world.width, height=64 * world.height + 64, background='white')
         self.outputFrame = Frame(self.root)
@@ -26,7 +30,8 @@ class Board:
         self.actionArea = None
         self.buttonStep = None
         self.buttonRun = None
-        self.buttonFont = font.Font(size=10)
+        self.buttonOpen = None
+        self.buttonFont = font.Font(font='Consolas', size=10)
 
         self.runMode = -1
 
@@ -39,7 +44,7 @@ class Board:
         self.player = None
         self.display_score = None
 
-        self.scoreFont = font.Font(family='KacstBook', size=22)
+        self.scoreFont = font.Font(family='Consolas', size=22)
 
         # Load images
         self.DOOR = PhotoImage(file='../assets/door.png')
@@ -57,14 +62,12 @@ class Board:
         self.ARROW_UP = PhotoImage(file='../assets/arrow_up.png')
         self.ARROW_LEFT = PhotoImage(file='../assets/arrow_left.png')
         self.ARROW_RIGHT = PhotoImage(file='../assets/arrow_right.png')
-        self.SCORE = PhotoImage(file='../assets/score_icon.png')
+        self.SCORE = PhotoImage(file='../assets/gold-icon.png')
 
         # Game state
         self.gameState = bind.GameState.NOT_RUNNING
 
         # Agent
-        # self.agent = controller.ManualAgent()
-        # self.root.bind("<Key>", self.updateBoard) # Manual agent
         self.agent = None # PL agent
         self.agentPos = None
 
@@ -103,7 +106,7 @@ class Board:
             self.objects.append(objects_line)
 
 
-        warningFont = font.Font(family='Verdana', size=10)
+        warningFont = font.Font(family='Consolas', size=10)
         for i in range(self.world.height):
             warnings_line = []
             for j in range(self.world.width):
@@ -129,7 +132,7 @@ class Board:
             for j in range(self.world.width):
                 tile_at_loc = self.world.listTiles[i][j]
                 if tile_at_loc.getPlayer():
-                    self.player = self.canvas.create_image(64 * j, 64 * i, image=self.PLAYER_RIGHT, anchor=NW)
+                    self.player = self.canvas.create_image(64 * j, 64 * i, image=self.PLAYER_UP, anchor=NW)
                     self.agentPos = (i, j)
                     terrains_line.append(None)
                 else:
@@ -146,18 +149,21 @@ class Board:
 
 
         # Output frame
-        self.buttonStep = Button(self.outputFrame, text='STEP', height=2, width=30, command=lambda: self.changeRunMode(0))
-        self.buttonRun = Button(self.outputFrame, text='RUN ALL', height=2, width=30, command=lambda: self.changeRunMode(1))
+        self.buttonStep = Button(self.outputFrame, text='STEP', height=2, width=11, command=lambda: self.changeRunMode(0))
+        self.buttonRun = Button(self.outputFrame, text='RUN ALL', height=2, width=11, command=lambda: self.changeRunMode(1))
+        self.buttonOpen = Button(self.outputFrame, text='OPEN', height=2, width=11, command=lambda: self.changeRunMode(2))
         self.buttonStep['font'] = self.buttonFont
         self.buttonRun['font'] = self.buttonFont
+        self.buttonOpen['font'] = self.buttonFont
         
-        self.KBArea = scrolledtext.ScrolledText(self.outputFrame, wrap=WORD, width=40, height=20, font=('Verdana', 15))
-        self.actionArea = scrolledtext.ScrolledText(self.outputFrame, wrap=WORD, width=40, height=6, font=('Verdana', 15))
+        self.KBArea = scrolledtext.ScrolledText(self.outputFrame, wrap=WORD, width=40, height=20, font=('Consolas', 15))
+        self.actionArea = scrolledtext.ScrolledText(self.outputFrame, wrap=WORD, width=40, height=6, font=('Consolas', 15))
 
-        self.buttonStep.grid(row=0, column=0)
-        self.buttonRun.grid(row=0, column=1)
-        self.KBArea.grid(row=1, column=0, columnspan=2)
-        self.actionArea.grid(row=2, column=0, columnspan=2)
+        self.buttonOpen.grid(row=0, column=0)
+        self.buttonStep.grid(row=0, column=1)
+        self.buttonRun.grid(row=0, column=2)
+        self.KBArea.grid(row=1, column=0, columnspan=5)
+        self.actionArea.grid(row=2, column=0, columnspan=5)
 
     ############################# ACTIONS #############################
     
@@ -185,14 +191,19 @@ class Board:
                 
         if self.validPos(nextPos):
             self.world.movePlayer(self.agentPos[0], self.agentPos[1], nextPos[0], nextPos[1])
+            self.world.tile = (self.agentPos[0], self.agentPos[1])
+
+            # Clear the previous location.
+            self.terrains[self.agentPos[0]][self.agentPos[1]] = self.canvas.create_image(64 * self.agentPos[1], 64 * self.agentPos[0], image=self.TERRAIN, anchor=NW)
             self.agentPos = nextPos
             
             if self.terrains[self.agentPos[0]][self.agentPos[1]]:
                 self.canvas.delete(self.terrains[self.agentPos[0]][self.agentPos[1]])
-                self.terrains[self.agentPos[0]][self.agentPos[1]] = None
+                # self.terrains[self.agentPos[0]][self.agentPos[1]] = None
             
             self.canvas.move(self.player, fixed_x, fixed_y)
             self.agent.currentState = action
+
 
             self.score -= 10
             self.canvas.itemconfig(self.score_display, text=str(self.score))
@@ -263,7 +274,7 @@ class Board:
 
     def grabGold(self):
         if self.world.listTiles[self.agentPos[0]][self.agentPos[1]].getGold():
-            self.score += 100
+            self.score += 5000
             self.canvas.itemconfig(self.score_display, text=str(self.score))
 
             # UPDATE WORLD
@@ -513,5 +524,48 @@ class Board:
 
             self.root.mainloop()
 
+        elif self.runMode == 2:
+            map_file = askopenfilename(
+                initialdir="../maps",
+                title='Select map file',
+                filetypes=(
+                    ('Plain text map files', '*.txt'),
+                    ('All files', '*.*')
+                )
+            )
+            map_file = map_file.split('/')[-1]
+            if map_file != '':                
+                # KB and Action
+                self.KBArea = None
+                self.actionArea = None
+                self.buttonStep = None
+                self.buttonRun = None
+                self.buttonOpen = None
+                self.buttonFont = font.Font(font='Consolas', size=10)
+
+                self.runMode = -1
+
+                self.tiles = []
+                self.objects = []
+                self.warnings = []
+                self.terrains = []
+                self.player = None
+                self.display_score = None
+                
+                # Game state
+                self.gameState = bind.GameState.NOT_RUNNING
+
+                # Agent
+                self.agent = None # PL agent
+                self.agentPos = None
+
+                # Score
+                self.score = 0
+
+                self.world.read_Map('../map/' + map_file)
+                # Create World again
+                self.createWorld()
+            else:
+                print("Unavailable map. Please check your path.")
         else:
             self.root.mainloop()

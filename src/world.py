@@ -26,6 +26,7 @@ class WumpusWorld:
         return adj
 
     def read_Map(self, filename):
+        self.listTiles = []
         try:
             with open(filename, 'r') as f:
                 lines = f.read().splitlines()
